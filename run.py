@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 import time
-
+sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 from tf_pose import common
 import cv2
 import numpy as np

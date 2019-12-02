@@ -5,6 +5,9 @@ import argparse
 import logging
 import os
 import time
+import sys
+sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
+
 
 import cv2
 import numpy as np
@@ -29,10 +32,10 @@ logger.addHandler(ch)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training codes for Openpose using Tensorflow')
     parser.add_argument('--model', default='mobilenet_v2_1.4', help='model name')
-    parser.add_argument('--datapath', type=str, default='/data/public/rw/coco/annotations')
-    parser.add_argument('--imgpath', type=str, default='/data/public/rw/coco/')
-    parser.add_argument('--batchsize', type=int, default=64)
-    parser.add_argument('--gpus', type=int, default=4)
+    parser.add_argument('--datapath', type=str, default='/home/zixu/Extra_Disk/Dataset/PoseTrack/posetrack_data/combined_annotations')
+    parser.add_argument('--imgpath', type=str, default='/home/zixu/Extra_Disk/Dataset/PoseTrack/')
+    parser.add_argument('--batchsize', type=int, default=2)
+    parser.add_argument('--gpus', type=int, default=1)
     parser.add_argument('--max-epoch', type=int, default=600)
     parser.add_argument('--lr', type=str, default='0.001')
     parser.add_argument('--tag', type=str, default='test')
@@ -73,8 +76,8 @@ if __name__ == '__main__':
     df_valid.reset_state()
     validation_cache = []
 
-    val_image = get_sample_images(args.input_width, args.input_height)
-    logger.debug('tensorboard val image: %d' % len(val_image))
+    # val_image = get_sample_images(args.input_width, args.input_height)
+    # logger.debug('tensorboard val image: %d' % len(val_image))
     logger.debug(q_inp)
     logger.debug(q_heat)
     logger.debug(q_vect)
@@ -156,13 +159,13 @@ if __name__ == '__main__':
     valid_loss_ll = tf.placeholder(tf.float32, shape=[])
     valid_loss_ll_paf = tf.placeholder(tf.float32, shape=[])
     valid_loss_ll_heat = tf.placeholder(tf.float32, shape=[])
-    sample_train = tf.placeholder(tf.float32, shape=(4, 640, 640, 3))
-    sample_valid = tf.placeholder(tf.float32, shape=(12, 640, 640, 3))
-    train_img = tf.summary.image('training sample', sample_train, 4)
-    valid_img = tf.summary.image('validation sample', sample_valid, 12)
+    sample_train = tf.placeholder(tf.float32, shape=(2, 640, 640, 3))
+    #sample_valid = tf.placeholder(tf.float32, shape=(12, 640, 640, 3))
+    train_img = tf.summary.image('training_sample', sample_train, 4)
+    #valid_img = tf.summary.image('validation sample', sample_valid, 12)
     valid_loss_t = tf.summary.scalar("loss_valid", valid_loss)
     valid_loss_ll_t = tf.summary.scalar("loss_valid_lastlayer", valid_loss_ll)
-    merged_validate_op = tf.summary.merge([train_img, valid_img, valid_loss_t, valid_loss_ll_t])
+    merged_validate_op = tf.summary.merge([train_img, valid_loss_t, valid_loss_ll_t])
 
     saver = tf.train.Saver(max_to_keep=1000)
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
@@ -171,25 +174,25 @@ if __name__ == '__main__':
         logger.info('model weights initialization')
         sess.run(tf.global_variables_initializer())
 
-        if args.checkpoint and os.path.isdir(args.checkpoint):
-            logger.info('Restore from checkpoint...')
-            # loader = tf.train.Saver(net.restorable_variables())
-            # loader.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
-            saver.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
-            logger.info('Restore from checkpoint...Done')
-        elif pretrain_path:
-            logger.info('Restore pretrained weights... %s' % pretrain_path)
-            if '.npy' in pretrain_path:
-                net.load(pretrain_path, sess, False)
-            else:
-                try:
-                    loader = tf.train.Saver(net.restorable_variables(only_backbone=False))
-                    loader.restore(sess, pretrain_path)
-                except:
-                    logger.info('Restore only weights in backbone layers.')
-                    loader = tf.train.Saver(net.restorable_variables())
-                    loader.restore(sess, pretrain_path)
-            logger.info('Restore pretrained weights...Done')
+        # if args.checkpoint and os.path.isdir(args.checkpoint):
+        #     logger.info('Restore from checkpoint...')
+        #     # loader = tf.train.Saver(net.restorable_variables())
+        #     # loader.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
+        #     saver.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
+        #     logger.info('Restore from checkpoint...Done')
+        # elif pretrain_path:
+        #     logger.info('Restore pretrained weights... %s' % pretrain_path)
+        #     if '.npy' in pretrain_path:
+        #         net.load(pretrain_path, sess, False)
+        #     else:
+        #         try:
+        #             loader = tf.train.Saver(net.restorable_variables(only_backbone=False))
+        #             loader.restore(sess, pretrain_path)
+        #         except:
+        #             logger.info('Restore only weights in backbone layers.')
+        #             loader = tf.train.Saver(net.restorable_variables())
+        #             loader.restore(sess, pretrain_path)
+        #     logger.info('Restore pretrained weights...Done')
 
         logger.info('prepare file writer')
         file_writer = tf.summary.FileWriter(os.path.join(logpath, args.tag), sess.graph)
@@ -210,6 +213,7 @@ if __name__ == '__main__':
             curr_epoch = float(gs_num) / step_per_epoch
 
             if gs_num > step_per_epoch * args.max_epoch:
+                print("Loop breaked")
                 break
 
             if gs_num - last_gs_num >= 500:
@@ -219,10 +223,10 @@ if __name__ == '__main__':
                 batch_per_sec = (gs_num - initial_gs_num) / (time.time() - time_started)
                 logger.info('epoch=%.2f step=%d, %0.4f examples/sec lr=%f, loss=%g, loss_ll=%g, loss_ll_paf=%g, loss_ll_heat=%g' % (gs_num / step_per_epoch, gs_num, batch_per_sec * args.batchsize, lr_val, train_loss, train_loss_ll, train_loss_ll_paf, train_loss_ll_heat))
                 last_gs_num = gs_num
-
-                if last_log_epoch1 < curr_epoch:
-                    file_writer.add_summary(summary, curr_epoch)
-                    last_log_epoch1 = curr_epoch
+                file_writer.add_summary(summary, curr_epoch)
+                # if last_log_epoch1 < curr_epoch:
+                #     file_writer.add_summary(summary, curr_epoch)
+                #     last_log_epoch1 = curr_epoch
 
             if gs_num - last_gs_num2 >= 2000:
                 # save weights
@@ -230,15 +234,22 @@ if __name__ == '__main__':
 
                 average_loss = average_loss_ll = average_loss_ll_paf = average_loss_ll_heat = 0
                 total_cnt = 0
-
+                
+                logger.info('validation_cache size %d' % len(validation_cache))
                 if len(validation_cache) == 0:
+                    i=0
                     for images_test, heatmaps, vectmaps in tqdm(df_valid.get_data()):
+                        i+=1
                         validation_cache.append((images_test, heatmaps, vectmaps))
+                        if i>200:
+                            break
                     df_valid.reset_state()
                     del df_valid
                     df_valid = None
 
                 # log of test accuracy
+                # logger.info('val_image size %d' % len(val_image))
+
                 for images_test, heatmaps, vectmaps in validation_cache:
                     lss, lss_ll, lss_ll_paf, lss_ll_heat, vectmap_sample, heatmap_sample = sess.run(
                         [total_loss, total_loss_ll, total_loss_ll_paf, total_loss_ll_heat, output_vectmap, output_heatmap],
@@ -253,10 +264,12 @@ if __name__ == '__main__':
                 logger.info('validation(%d) %s loss=%f, loss_ll=%f, loss_ll_paf=%f, loss_ll_heat=%f' % (total_cnt, args.tag, average_loss / total_cnt, average_loss_ll / total_cnt, average_loss_ll_paf / total_cnt, average_loss_ll_heat / total_cnt))
                 last_gs_num2 = gs_num
 
-                sample_image = [enqueuer.last_dp[0][i] for i in range(4)]
+                sample_image = [enqueuer.last_dp[0][i] for i in range(2)]
+                logger.info('sample_image size %d' % len(sample_image))
+
                 outputMat = sess.run(
                     outputs,
-                    feed_dict={q_inp: np.array((sample_image + val_image) * max(1, (args.batchsize // 16)))}
+                    feed_dict={q_inp: np.array((sample_image ) * max(1, (args.batchsize // 16)))}
                 )
                 pafMat, heatMat = outputMat[:, :, :, 19:], outputMat[:, :, :, :19]
 
@@ -267,12 +280,12 @@ if __name__ == '__main__':
                     test_result = test_result.reshape([640, 640, 3]).astype(float)
                     sample_results.append(test_result)
 
-                test_results = []
-                for i in range(len(val_image)):
-                    test_result = CocoPose.display_image(val_image[i], heatMat[len(sample_image) + i], pafMat[len(sample_image) + i], as_numpy=True)
-                    test_result = cv2.resize(test_result, (640, 640))
-                    test_result = test_result.reshape([640, 640, 3]).astype(float)
-                    test_results.append(test_result)
+                # test_results = []
+                # for i in range(len(val_image)):
+                #     test_result = CocoPose.display_image(val_image[i], heatMat[len(sample_image) + i], pafMat[len(sample_image) + i], as_numpy=True)
+                #     test_result = cv2.resize(test_result, (640, 640))
+                #     test_result = test_result.reshape([640, 640, 3]).astype(float)
+                #     test_results.append(test_result)
 
                 # save summary
                 summary = sess.run(merged_validate_op, feed_dict={
@@ -280,7 +293,7 @@ if __name__ == '__main__':
                     valid_loss_ll: average_loss_ll / total_cnt,
                     valid_loss_ll_paf: average_loss_ll_paf / total_cnt,
                     valid_loss_ll_heat: average_loss_ll_heat / total_cnt,
-                    sample_valid: test_results,
+                    #sample_valid: test_results,
                     sample_train: sample_results
                 })
                 if last_log_epoch2 < curr_epoch:
