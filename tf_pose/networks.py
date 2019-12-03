@@ -8,6 +8,7 @@ from tf_pose.network_mobilenet_thin import MobilenetNetworkThin
 
 from tf_pose.network_cmu import CmuNetwork
 from tf_pose.network_mobilenet_v2 import Mobilenetv2Network
+from tf_pose.rnn import RnnUnit
 
 
 def _get_base_path():
@@ -17,7 +18,11 @@ def _get_base_path():
 
 
 def get_network(type, placeholder_input, sess_for_load=None, trainable=True):
-    if type == 'mobilenet':
+    if type == 'rnn':
+        net = RnnUnit({'rnnInput': placeholder_input}, conv_width=1.4, conv_width2=1.00, trainable=trainable)
+        pretrain_path = 'pretrained/mobilenet_v1_0.75_224_2017_06_14/mobilenet_v1_0.75_224.ckpt'
+        last_layer = 'MConv_Stage1_L{aux}_5'
+    elif type == 'mobilenet':
         net = MobilenetNetwork({'image': placeholder_input}, conv_width=0.75, conv_width2=1.00, trainable=trainable)
         pretrain_path = 'pretrained/mobilenet_v1_0.75_224_2017_06_14/mobilenet_v1_0.75_224.ckpt'
         last_layer = 'MConv_Stage6_L{aux}_5'
@@ -137,12 +142,13 @@ def get_graph_path(model_name):
         'mobilenet_v2_large_quantize': 'graph/mobilenet_v2_large/graph_opt_q.pb',
         'mobilenet_v2_small': 'graph/mobilenet_v2_small/graph_opt.pb',
     }
-
-    base_data_dir = dirname(dirname(abspath(__file__)))
-    if os.path.exists(os.path.join(base_data_dir, 'models')):
-        base_data_dir = os.path.join(base_data_dir, 'models')
-    else:
-        base_data_dir = os.path.join(base_data_dir, 'tf_pose_data')
+    #base_data_dir = dirname(dirname(abspath(__file__)))
+    #print(base_data_dir)
+    # if os.path.exists(os.path.join(base_data_dir, 'models')):
+    #     base_data_dir = os.path.join(base_data_dir, 'models')
+    # else:
+    #     base_data_dir = os.path.join(base_data_dir, 'tf_pose_data')
+    base_data_dir='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/'
 
     graph_path = os.path.join(base_data_dir, dyn_graph_path[model_name])
     if os.path.isfile(graph_path):

@@ -336,6 +336,8 @@ class TfPoseEstimator:
 
         self.tensor_image = self.graph.get_tensor_by_name('TfPoseEstimator/image:0')
         self.tensor_output = self.graph.get_tensor_by_name('TfPoseEstimator/Openpose/concat_stage7:0')
+        self.feature_output = self.graph.get_tensor_by_name('TfPoseEstimator/feat_concat:0')
+
         self.tensor_heatMat = self.tensor_output[:, :, :, :19]
         self.tensor_pafMat = self.tensor_output[:, :, :, 19:]
         self.upsample_size = tf.placeholder(dtype=tf.int32, shape=(2,), name='upsample_size')
@@ -343,6 +345,8 @@ class TfPoseEstimator:
                                                       align_corners=False, name='upsample_heatmat')
         self.tensor_pafMat_up = tf.image.resize_area(self.tensor_output[:, :, :, 19:], self.upsample_size,
                                                      align_corners=False, name='upsample_pafmat')
+
+        # self.tensor_output_np = self.tensor_output.eval
         if trt_bool is True:
             smoother = Smoother({'data': self.tensor_heatMat_up}, 25, 3.0, 19)
         else:
@@ -363,21 +367,21 @@ class TfPoseEstimator:
              ])
         )
         self.persistent_sess.run(
-            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up],
+            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up, self.feature_output],
             feed_dict={
                 self.tensor_image: [np.ndarray(shape=(target_size[1], target_size[0], 3), dtype=np.float32)],
                 self.upsample_size: [target_size[1], target_size[0]]
             }
         )
         self.persistent_sess.run(
-            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up],
+            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up, self.feature_output],
             feed_dict={
                 self.tensor_image: [np.ndarray(shape=(target_size[1], target_size[0], 3), dtype=np.float32)],
                 self.upsample_size: [target_size[1] // 2, target_size[0] // 2]
             }
         )
         self.persistent_sess.run(
-            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up],
+            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up, self.feature_output],
             feed_dict={
                 self.tensor_image: [np.ndarray(shape=(target_size[1], target_size[0], 3), dtype=np.float32)],
                 self.upsample_size: [target_size[1] // 4, target_size[0] // 4]
@@ -387,6 +391,18 @@ class TfPoseEstimator:
         # logs
         if self.tensor_image.dtype == tf.quint8:
             logger.info('quantization mode enabled.')
+
+    def get_feature(self, path):
+        save_path = path[:-3]+'npy'
+        feature = self.feature_np[0]
+        output = self.output_np[0]
+        #print(feature.shape)
+        #print(output.shape)
+        stack_feature = np.concatenate((feature, output), axis=-1)
+        np.save(save_path, stack_feature)
+        #print(stack_feature.shape)
+        #print(self.tensor_output_np.shape)
+        #print(self.feature_output_np.shape)
 
     def __del__(self):
         # self.persistent_sess.close()
@@ -550,8 +566,8 @@ class TfPoseEstimator:
         img = npimg
         if resize_to_default:
             img = self._get_scaled_img(npimg, None)[0][0]
-        peaks, heatMat_up, pafMat_up = self.persistent_sess.run(
-            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up], feed_dict={
+        peaks, heatMat_up, pafMat_up, self.feature_np, self.output_np = self.persistent_sess.run(
+            [self.tensor_peaks, self.tensor_heatMat_up, self.tensor_pafMat_up, self.feature_output, self.tensor_output], feed_dict={
                 self.tensor_image: [img], self.upsample_size: upsample_size
             })
         peaks = peaks[0]
@@ -563,6 +579,7 @@ class TfPoseEstimator:
         t = time.time()
         humans = PoseEstimator.estimate_paf(peaks, self.heatMat, self.pafMat)
         logger.debug('estimate time=%.5f' % (time.time() - t))
+
         return humans
 
 
@@ -576,6 +593,6 @@ if __name__ == '__main__':
 
     t = time.time()
     humans = PoseEstimator.estimate_paf(data['peaks'], data['heatMat'], data['pafMat'])
-    dt = time.time() - t;
+    dt = time.time() - t
     t = time.time()
     logger.info('elapsed #humans=%d time=%.8f' % (len(humans), dt))

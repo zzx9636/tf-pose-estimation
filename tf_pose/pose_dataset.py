@@ -31,6 +31,11 @@ from pycocotools.coco import COCO
 from pose_augment import pose_flip, pose_rotation, pose_to_img, pose_crop_random, \
     pose_resize_shortestedge_random, pose_resize_shortestedge_fixed, pose_crop_center, pose_random_scale
 from numba import jit
+from numba.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+import warnings
+
+warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
+warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logger = logging.getLogger('pose_dataset')
@@ -104,7 +109,7 @@ class CocoMetadata:
 
         # logger.debug('joint size=%d' % len(self.joint_list))
 
-    @jit
+    @jit(forceobj=True)
     def get_heatmap(self, target_size):
         heatmap = np.zeros((CocoMetadata.__coco_parts, self.height, self.width), dtype=np.float32)
 
@@ -120,7 +125,8 @@ class CocoMetadata:
         heatmap[:, :, -1] = np.clip(1 - np.amax(heatmap, axis=2), 0.0, 1.0)
 
         if target_size:
-            heatmap = cv2.resize(heatmap, target_size, interpolation=cv2.INTER_AREA)
+            # print(heatmap.shape)
+            heatmap = cv2.resize(heatmap, target_size)#, interpolation=cv2.INTER_AREA)
 
         return heatmap.astype(np.float16)
 
@@ -148,7 +154,7 @@ class CocoMetadata:
                 heatmap[plane_idx][y][x] = max(heatmap[plane_idx][y][x], math.exp(-exp))
                 heatmap[plane_idx][y][x] = min(heatmap[plane_idx][y][x], 1.0)
 
-    @jit
+    @jit(forceobj=True)
     def get_vectormap(self, target_size):
         vectormap = np.zeros((CocoMetadata.__coco_parts*2, self.height, self.width), dtype=np.float32)
         countmap = np.zeros((CocoMetadata.__coco_parts, self.height, self.width), dtype=np.int16)
@@ -174,7 +180,7 @@ class CocoMetadata:
             vectormap[y][x][p*2+1] /= countmap[p][y][x]
 
         if target_size:
-            vectormap = cv2.resize(vectormap, target_size, interpolation=cv2.INTER_AREA)
+            vectormap = cv2.resize(vectormap, target_size)#, interpolation=cv2.INTER_AREA)
 
         return vectormap.astype(np.float16)
 
@@ -225,9 +231,9 @@ class CocoPose(RNGDataFlow):
         import matplotlib.pyplot as plt
 
         fig = plt.figure()
-        a = fig.add_subplot(2, 2, 1)
-        a.set_title('Image')
-        plt.imshow(CocoPose.get_bgimg(inp))
+        # a = fig.add_subplot(2, 2, 1)
+        # a.set_title('Image')
+        # plt.imshow(CocoPose.get_bgimg(inp))
 
         a = fig.add_subplot(2, 2, 2)
         a.set_title('Heatmap')
@@ -313,6 +319,105 @@ class CocoPose(RNGDataFlow):
 
             yield [meta]
 
+class CocoPose_RNN(RNGDataFlow):
+    @staticmethod
+    def display_image(inp, heatmap, vectmap, as_numpy=False):
+        global mplset
+        # if as_numpy and not mplset:
+        #     import matplotlib as mpl
+        #     mpl.use('Agg')
+        mplset = True
+        import matplotlib.pyplot as plt
+
+        fig = plt.figure()
+        a = fig.add_subplot(2, 2, 1)
+        a.set_title('Image')
+        plt.imshow(CocoPose.get_bgimg(inp))
+
+        a = fig.add_subplot(2, 2, 2)
+        a.set_title('Heatmap')
+        plt.imshow(CocoPose.get_bgimg(inp, target_size=(heatmap.shape[1], heatmap.shape[0])), alpha=0.5)
+        tmp = np.amax(heatmap, axis=2)
+        plt.imshow(tmp, cmap=plt.cm.gray, alpha=0.5)
+        plt.colorbar()
+
+        tmp2 = vectmap.transpose((2, 0, 1))
+        tmp2_odd = np.amax(np.absolute(tmp2[::2, :, :]), axis=0)
+        tmp2_even = np.amax(np.absolute(tmp2[1::2, :, :]), axis=0)
+
+        a = fig.add_subplot(2, 2, 3)
+        a.set_title('Vectormap-x')
+        plt.imshow(CocoPose.get_bgimg(inp, target_size=(vectmap.shape[1], vectmap.shape[0])), alpha=0.5)
+        plt.imshow(tmp2_odd, cmap=plt.cm.gray, alpha=0.5)
+        plt.colorbar()
+
+        a = fig.add_subplot(2, 2, 4)
+        a.set_title('Vectormap-y')
+        plt.imshow(CocoPose.get_bgimg(inp, target_size=(vectmap.shape[1], vectmap.shape[0])), alpha=0.5)
+        plt.imshow(tmp2_even, cmap=plt.cm.gray, alpha=0.5)
+        plt.colorbar()
+
+        if not as_numpy:
+            plt.show()
+        else:
+            fig.canvas.draw()
+            data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            fig.clear()
+            plt.close()
+            return data
+
+    @staticmethod
+    def get_bgimg(inp, target_size=None):
+        inp = cv2.cvtColor(inp.astype(np.uint8), cv2.COLOR_BGR2RGB)
+        if target_size:
+            inp = cv2.resize(inp, target_size, interpolation=cv2.INTER_AREA)
+        return inp
+
+    def __init__(self, path, img_path=None, is_train=True, decode_img=True, only_idx=-1):
+        self.is_train = is_train
+        self.decode_img = decode_img
+        self.only_idx = only_idx
+
+        if is_train:
+            whole_path = os.path.join(path, 'trainpart2018.json')
+        else:
+            whole_path = os.path.join(path, 'valpart2018.json')
+        self.img_path = (img_path if img_path is not None else '') #+ ('' if is_train else 'val/')
+        self.coco = COCO(whole_path)
+
+        logger.info('%s dataset %d' % (path, self.size()))
+
+    def size(self):
+        return len(self.coco.imgs)
+
+    def get_data(self):
+        idxs = np.arange(self.size())
+        self.rng.shuffle(idxs)
+
+        keys = list(self.coco.imgs.keys())
+        for idx in idxs:
+            img_meta = self.coco.imgs[keys[idx]]
+            img_idx = img_meta['id']
+            ann_idx = self.coco.getAnnIds(imgIds=img_idx)
+
+            img_url = os.path.join(self.img_path, img_meta['file_name'])
+
+            # if prev img exist
+            file_path = img_url[:-4]
+            img_idx = int(file_path[-6:])+1000000
+            data_prev_path = file_path[:-6]+str(img_idx-1)[1:]+'.npy'
+            if not os.path.exists(data_prev_path):
+                continue
+            anns = self.coco.loadAnns(ann_idx)
+            meta = CocoMetadata(idx, img_url, img_meta, anns, sigma=8.0)
+
+            total_keypoints = sum([ann.get('num_keypoints', 0) for ann in anns])
+            if total_keypoints == 0 and random.uniform(0, 1) > 0.2:
+                continue
+
+            yield [meta]
+
 
 class MPIIPose(RNGDataFlow):
     def __init__(self):
@@ -352,6 +457,19 @@ def read_image_url(metas):
         meta.img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     return metas
 
+def read_npy(metas):
+    for meta in metas:
+        file_path = meta.img_url[:-4]
+        img_idx = int(file_path[-6:])+1000000
+        data_prev_path = file_path[:-6]+str(img_idx-1)[1:]+'.npy'
+        data_cur_path = file_path+'.npy'
+        # print('read '+data_cur_path)
+
+        data_prev = np.load(data_prev_path)
+        data_cur = np.load(data_cur_path)
+        meta.img = np.concatenate((data_prev,data_cur), axis=-1)
+    return metas
+
 
 def get_dataflow(path, is_train, img_path=None):
     ds = CocoPose(path, img_path, is_train)       # read data from lmdb
@@ -379,6 +497,32 @@ def get_dataflow(path, is_train, img_path=None):
 
     return ds
 
+def get_dataflow_rnn(path, is_train, img_path=None):
+    ds = CocoPose_RNN(path, img_path, is_train)       # read data from lmdb
+    if is_train:
+        ds = MapData(ds, read_npy)
+        # ds = MapDataComponent(ds, pose_random_scale)
+        # ds = MapDataComponent(ds, pose_rotation)
+        # ds = MapDataComponent(ds, pose_flip)
+        # ds = MapDataComponent(ds, pose_resize_shortestedge_random)
+        # ds = MapDataComponent(ds, pose_crop_random)
+        ds = MapData(ds, pose_to_img)
+        # augs = [
+        #     imgaug.RandomApplyAug(imgaug.RandomChooseAug([
+        #         imgaug.GaussianBlur(max_size=3)
+        #     ]), 0.7)
+        # ]
+        # ds = AugmentImageComponent(ds, augs)
+        ds = PrefetchData(ds, 1000, multiprocessing.cpu_count() * 1)
+    else:
+        ds = MultiThreadMapData(ds, nr_thread=16, map_func=read_npy, buffer_size=1000)
+        # ds = MapDataComponent(ds, pose_resize_shortestedge_fixed)
+        # ds = MapDataComponent(ds, pose_crop_center)
+        ds = MapData(ds, pose_to_img)
+        ds = PrefetchData(ds, 100, multiprocessing.cpu_count() // 4)
+
+    return ds
+
 
 def _get_dataflow_onlyread(path, is_train, img_path=None):
     ds = CocoPose(path, img_path, is_train)  # read data from lmdb
@@ -399,6 +543,16 @@ def get_dataflow_batch(path, is_train, batchsize, img_path=None):
 
     return ds
 
+def get_dataflow_batch_rnn(path, is_train, batchsize, img_path=None):
+    logger.info('dataflow img_path=%s' % img_path)
+    ds = get_dataflow_rnn(path, is_train, img_path=img_path)
+    ds = BatchData(ds, batchsize)
+    # if is_train:
+    #     ds = PrefetchData(ds, 10, 2)
+    # else:
+    #     ds = PrefetchData(ds, 50, 2)
+
+    return ds
 
 class DataFlowToQueue(threading.Thread):
     def __init__(self, ds, placeholders, queue_size=5):
@@ -470,32 +624,36 @@ class DataFlowToQueue(threading.Thread):
 
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    # os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
-    from pose_augment import set_network_input_wh, set_network_scale
-    # set_network_input_wh(368, 368)
-    set_network_input_wh(480, 320)
-    set_network_scale(8)
+    # from pose_augment import set_network_input_wh, set_network_scale
+    # # set_network_input_wh(368, 368)
+    # set_network_input_wh(480, 320)
+    # set_network_scale(8)
 
-    # df = get_dataflow('/data/public/rw/coco/annotations', True, '/data/public/rw/coco/')
-    df = _get_dataflow_onlyread('/data/public/rw/coco/annotations', True, '/data/public/rw/coco/')
-    # df = get_dataflow('/root/coco/annotations', False, img_path='http://gpu-twg.kakaocdn.net/braincloud/COCO/')
+    # # df = get_dataflow('/data/public/rw/coco/annotations', True, '/data/public/rw/coco/')
+    # df = _get_dataflow_onlyread('/data/public/rw/coco/annotations', True, '/data/public/rw/coco/')
+    # # df = get_dataflow('/root/coco/annotations', False, img_path='http://gpu-twg.kakaocdn.net/braincloud/COCO/')
 
-    from tensorpack.dataflow.common import TestDataSpeed
-    TestDataSpeed(df).start()
-    sys.exit(0)
+    # from tensorpack.dataflow.common import TestDataSpeed
+    # TestDataSpeed(df).start()
+    # sys.exit(0)
 
-    with tf.Session() as sess:
-        df.reset_state()
-        t1 = time.time()
-        for idx, dp in enumerate(df.get_data()):
-            if idx == 0:
-                for d in dp:
-                    logger.info('%d dp shape={}'.format(d.shape))
-            print(time.time() - t1)
-            t1 = time.time()
-            CocoPose.display_image(dp[0], dp[1].astype(np.float32), dp[2].astype(np.float32))
-            print(dp[1].shape, dp[2].shape)
-            pass
+    # with tf.Session() as sess:
+    #     df.reset_state()
+    #     t1 = time.time()
+    #     for idx, dp in enumerate(df.get_data()):
+    #         if idx == 0:
+    #             for d in dp:
+    #                 logger.info('%d dp shape={}'.format(d.shape))
+    #         print(time.time() - t1)
+    #         t1 = time.time()
+    #         CocoPose.display_image(dp[0], dp[1].astype(np.float32), dp[2].astype(np.float32))
+    #         print(dp[1].shape, dp[2].shape)
+    #         pass
 
-    logger.info('done')
+    # logger.info('done')
+    data_path = '/home/zixu/Extra_Disk/Dataset/PoseTrack/posetrack_data/combined_annotations'
+    img_path = '/home/zixu/Extra_Disk/Dataset/PoseTrack/images'
+    test  = CocoPose_RNN(data_path, img_path=img_path)
+    test.get_data()

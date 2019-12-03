@@ -7,9 +7,9 @@ from tensorpack.dataflow.imgaug.geometry import RotationAndCropValid
 
 from tf_pose.common import CocoPart
 
-_network_w = 368
+_network_w = 432
 _network_h = 368
-_scale = 2
+_scale = 8
 
 
 def set_network_input_wh(w, h):
@@ -258,6 +258,9 @@ def _rotate_coord(shape, newxy, point, angle):
 
 def pose_to_img(meta_l):
     global _network_w, _network_h, _scale
+    # print("In pose_to_img")
+    # print(meta_l[0].img.shape)
+    #print((_network_w // _scale, _network_h // _scale))
     return [
         meta_l[0].img.astype(np.float16),
         meta_l[0].get_heatmap(target_size=(_network_w // _scale, _network_h // _scale)),

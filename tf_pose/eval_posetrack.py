@@ -48,7 +48,7 @@ def write_coco_json(human, image_w, image_h):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Tensorflow Openpose Inference')
-    parser.add_argument('--resize', type=str, default='0x0', help='if provided, resize images before they are processed. default=0x0, Recommends : 432x368 or 656x368 or 1312x736 ')
+    parser.add_argument('--resize', type=str, default='432x368', help='if provided, resize images before they are processed. default=0x0, Recommends : 432x368 or 656x368 or 1312x736 ')
     parser.add_argument('--resize-out-ratio', type=float, default=8.0, help='if provided, resize heatmaps before they are post-processed. default=8.0')
     parser.add_argument('--model', type=str, default='mobilenet_v2_large', help='cmu / mobilenet_thin / mobilenet_v2_large')
     parser.add_argument('--cocoyear', type=str, default='2018')
@@ -59,10 +59,11 @@ if __name__ == '__main__':
 
 
     image_dir = args.coco_dir 
-    coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/trainpart%s.json' % args.cocoyear
+    coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/valpart%s.json' % args.cocoyear
     cocoGt = COCO(coco_json_file)
-    catIds = cocoGt.getCatIds()#catNms=['person'])
-    keys = cocoGt.getImgIds(catIds=catIds)
+    #catIds = cocoGt.getCatIds(catNms=['person'])
+    keys = cocoGt.getImgIds()#catIds=catIds)
+
     if args.data_idx < 0:
         if eval_size > 0:
             keys = keys[:eval_size]  # only use the first #eval_size elements.
@@ -89,6 +90,7 @@ if __name__ == '__main__':
         img_idx = img_meta['id']
 
         img_name = os.path.join(image_dir, img_meta['file_name'])
+        print(img_name)
         image = read_imgfile(img_name, None, None)
         if image is None:
             logger.error('image not found, path=%s' % img_name)
