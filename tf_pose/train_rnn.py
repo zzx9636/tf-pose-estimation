@@ -1,7 +1,7 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-#mpl.use('Agg')      # training mode, no screen should be open. (It will block training loop)
+mpl.use('Agg')      # training mode, no screen should be open. (It will block training loop)
 
 import argparse
 import logging
@@ -38,17 +38,17 @@ if __name__ == '__main__':
     parser.add_argument('--imgpath', type=str, default='/home/zixu/Extra_Disk/Dataset/PoseTrack/')
     parser.add_argument('--batchsize', type=int, default=1)
     parser.add_argument('--gpus', type=int, default=1)
-    parser.add_argument('--max-epoch', type=int, default=600)
+    parser.add_argument('--max-epoch', type=int, default=100)
     parser.add_argument('--lr', type=str, default='0.001')
     parser.add_argument('--tag', type=str, default='test')
-    parser.add_argument('--checkpoint', type=str, default='/home/extra_disk/Git_Repo/tf-pose-estimation/models/train/test')
+    parser.add_argument('--checkpoint', type=str, default='/home/extra_disk/Git_Repo/tf-pose-estimation/models/train3/test')
 
     parser.add_argument('--input-width', type=int, default=432)
     parser.add_argument('--input-height', type=int, default=368)
     parser.add_argument('--quant-delay', type=int, default=-1)
     args = parser.parse_args()
 
-    modelpath = logpath = './models/train/'
+    modelpath = logpath = './models/train3/'
 
     if args.gpus <= 0:
         raise Exception('gpus <= 0')
@@ -65,14 +65,15 @@ if __name__ == '__main__':
 
     logger.info('define model+')
     with tf.device(tf.DeviceSpec(device_type="CPU")):
-        input_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 482), name='rnnInput')
+        input_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 425), name='rnnInput')
+        input_pose = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 57), name='poseInput')
         vectmap_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 38), name='vectmap')
         heatmap_node = tf.placeholder(tf.float32, shape=(args.batchsize, output_h, output_w, 19), name='heatmap')
 
         # prepare data
         df = get_dataflow_batch_rnn(args.datapath, True, args.batchsize, img_path=args.imgpath)
-        enqueuer = DataFlowToQueue(df, [input_node, heatmap_node, vectmap_node], queue_size=2)
-        q_inp, q_heat, q_vect = enqueuer.dequeue()
+        enqueuer = DataFlowToQueue(df, [input_node, input_pose, heatmap_node, vectmap_node], queue_size=2)
+        q_inp, q_pose, q_heat, q_vect = enqueuer.dequeue()
 
     df_valid = get_dataflow_batch_rnn(args.datapath, False, args.batchsize, img_path=args.imgpath)
     df_valid.reset_state()
@@ -85,7 +86,7 @@ if __name__ == '__main__':
     logger.debug(q_vect)
 
     # define model for multi-gpu
-    q_inp_split, q_heat_split, q_vect_split = tf.split(q_inp, args.gpus), tf.split(q_heat, args.gpus), tf.split(q_vect, args.gpus)
+    q_inp_split, q_pose_split, q_heat_split, q_vect_split = tf.split(q_inp, args.gpus), tf.split(q_pose, args.gpus), tf.split(q_heat, args.gpus), tf.split(q_vect, args.gpus)
 
     output_vectmap = []
     output_heatmap = []
@@ -96,7 +97,7 @@ if __name__ == '__main__':
     for gpu_id in range(args.gpus):
         with tf.device(tf.DeviceSpec(device_type="GPU", device_index=gpu_id)):
             with tf.variable_scope(tf.get_variable_scope(), reuse=(gpu_id > 0)):
-                net, pretrain_path, last_layer = get_network('rnn', q_inp_split[gpu_id])
+                net, pretrain_path, last_layer = get_network('rnn', [q_inp_split[gpu_id], q_pose_split[gpu_id]])
                 if args.checkpoint:
                     pretrain_path = args.checkpoint
                 vect, heat = net.loss_last()
@@ -123,7 +124,7 @@ if __name__ == '__main__':
         total_loss_ll = tf.reduce_sum([total_loss_ll_paf, total_loss_ll_heat])
 
         # define optimizer
-        step_per_epoch = 1040 // args.batchsize
+        step_per_epoch = 7332 // args.batchsize
         global_step = tf.Variable(0, trainable=False)
         if ',' not in args.lr:
             starter_learning_rate = float(args.lr)
@@ -176,26 +177,29 @@ if __name__ == '__main__':
         logger.info('model weights initialization')
         sess.run(tf.global_variables_initializer())
 
-        # if args.checkpoint and os.path.isdir(args.checkpoint):
-        #     logger.info('Restore from checkpoint...')
-        #     # loader = tf.train.Saver(net.restorable_variables())
-        #     # loader.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
-        #     saver.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
-        #     logger.info('Restore from checkpoint...Done')
-        # elif pretrain_path:
-        #     logger.info('Restore pretrained weights... %s' % pretrain_path)
-        #     if '.npy' in pretrain_path:
-        #         net.load(pretrain_path, sess, False)
-        #     else:
-        #         try:
-        #             loader = tf.train.Saver(net.restorable_variables(only_backbone=False))
-        #             loader.restore(sess, pretrain_path)
-        #         except:
-        #             logger.info('No weight to restore.')
-        #             # logger.info('Restore only weights in backbone layers.')
-        #             # loader = tf.train.Saver(net.restorable_variables())
-        #             # loader.restore(sess, pretrain_path)
-        #     logger.info('Restore pretrained weights...Done')
+        if args.checkpoint and os.path.isdir(args.checkpoint):
+            try:
+                logger.info('Restore from checkpoint...')
+                # loader = tf.train.Saver(net.restorable_variables())
+                # loader.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
+                saver.restore(sess, tf.train.latest_checkpoint(args.checkpoint))
+                logger.info('Restore from checkpoint...Done')
+            except:
+                logger.info('No weight to restore.')
+        elif pretrain_path:
+            logger.info('Restore pretrained weights... %s' % pretrain_path)
+            if '.npy' in pretrain_path:
+                net.load(pretrain_path, sess, False)
+            else:
+                try:
+                    loader = tf.train.Saver(net.restorable_variables(only_backbone=False))
+                    loader.restore(sess, pretrain_path)
+                except:
+                    logger.info('No weight to restore.')
+                    # logger.info('Restore only weights in backbone layers.')
+                    # loader = tf.train.Saver(net.restorable_variables())
+                    # loader.restore(sess, pretrain_path)
+            logger.info('Restore pretrained weights...Done')
 
         logger.info('prepare file writer')
         file_writer = tf.summary.FileWriter(os.path.join(logpath, args.tag), sess.graph)
@@ -230,13 +234,13 @@ if __name__ == '__main__':
                     file_writer.add_summary(summary, curr_epoch)
                     last_log_epoch1 = curr_epoch
                 
-                sample_image = enqueuer.last_dp[0][0] 
-                sample_heat = enqueuer.last_dp[1][0]
-                sample_paf = enqueuer.last_dp[2][0]
-                outputMat = sess.run(
-                    outputs,
-                    feed_dict={q_inp: np.array(([sample_image] ) * max(1, (args.batchsize // 16)))}
-                )
+                # sample_image = enqueuer.last_dp[0][0] 
+                # sample_heat = enqueuer.last_dp[1][0]
+                # sample_paf = enqueuer.last_dp[2][0]
+                # outputMat = sess.run(
+                #     outputs,
+                #     feed_dict={q_inp: np.array(([sample_image] ) * max(1, (args.batchsize // 16)))}
+                # )
                 # pafMat, heatMat = outputMat[0, :, :, 19:], outputMat[0, :, :, :19]
                 # fig = plt.figure()
                 # a = fig.add_subplot(3, 2, 1)
@@ -305,10 +309,10 @@ if __name__ == '__main__':
                 #     df_valid = None
 
                 # log of test accuracy
-                for images_test, heatmaps, vectmaps in tqdm(df_valid.get_data()):
+                for images_test, pose_test, heatmaps, vectmaps in tqdm(df_valid.get_data()):
                     lss, lss_ll, lss_ll_paf, lss_ll_heat, vectmap_sample, heatmap_sample = sess.run(
                         [total_loss, total_loss_ll, total_loss_ll_paf, total_loss_ll_heat, output_vectmap, output_heatmap],
-                        feed_dict={q_inp: images_test, q_vect: vectmaps, q_heat: heatmaps}
+                        feed_dict={q_inp: images_test, q_pose: pose_test, q_vect: vectmaps, q_heat: heatmaps}
                     )
                     average_loss += lss * len(images_test)
                     average_loss_ll += lss_ll * len(images_test)

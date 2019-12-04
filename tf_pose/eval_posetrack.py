@@ -10,7 +10,7 @@ import json, re
 from tqdm import tqdm
 #sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 
-from tf_pose.estimator import TfPoseEstimator
+from tf_pose.estimator import TfPoseEstimator_RNN as TfPoseEstimator
 from tf_pose.networks import model_wh, get_graph_path
 from tf_pose.common import read_imgfile
 
@@ -61,8 +61,9 @@ if __name__ == '__main__':
     image_dir = args.coco_dir 
     coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/valpart%s.json' % args.cocoyear
     cocoGt = COCO(coco_json_file)
-    #catIds = cocoGt.getCatIds(catNms=['person'])
-    keys = cocoGt.getImgIds()#catIds=catIds)
+    keys = cocoGt.getImgIds()
+
+    #print(keys)
 
     if args.data_idx < 0:
         if eval_size > 0:
@@ -70,27 +71,34 @@ if __name__ == '__main__':
         pass
     else:
         keys = [keys[args.data_idx]]
+    
     logger.info('validation %s set size=%d' % (coco_json_file, len(keys)))
     write_json = '%s_%s_%0.1f.json' % (args.model, args.resize, args.resize_out_ratio)
-    base_data_dir='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/mobilenet_v2_large/graph_opt.pb'
-    #base_data_dir='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/cmu/graph_opt.pb'
-    logger.debug('initialization %s : %s' % (args.model, base_data_dir))
+    base_path='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/mobilenet_v2_large/graph_opt.pb'
+    #rnn_path = '/home/extra_disk/Git_Repo/tf-pose-estimation/models/train/test/model_latest-246000.meta' 
+    rnn_path = '/home/extra_disk/Git_Repo/tf-pose-estimation/models/graph/rnn/graph_opt.pb'
+    #base_path='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/cmu/graph_opt.pb'
+    logger.debug('initialization')
     w, h = model_wh(args.resize)
     if w == 0 or h == 0:
-        e = TfPoseEstimator(get_graph_path(args.model), target_size=(432, 368))
+        #e = TfPoseEstimator(base_path, target_size=(432, 368))
+        e = TfPoseEstimator(base_path, rnn_path, target_size=(432, 368))
     else:
-        e = TfPoseEstimator(get_graph_path(args.model), target_size=(w, h))
+        #e = TfPoseEstimator(base_path, target_size=(w, h))
+        e = TfPoseEstimator(base_path, rnn_path, target_size=(w, h))
 
-    print('FLOPs: ', e.get_flops())
+    print("Graph built")
+
 
     result = []
+    keys = [10174370017, 10174370018]
     tqdm_keys = tqdm(keys)
     for i, k in enumerate(tqdm_keys):
         img_meta = cocoGt.loadImgs(k)[0]
         img_idx = img_meta['id']
 
         img_name = os.path.join(image_dir, img_meta['file_name'])
-        print(img_name)
+        # print(img_name)
         image = read_imgfile(img_name, None, None)
         if image is None:
             logger.error('image not found, path=%s' % img_name)
@@ -99,6 +107,8 @@ if __name__ == '__main__':
         # inference the image with the specified network
         t = time.time()
         humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
+        if humans is None:
+            continue
         elapsed = time.time() - t
 
         scores = 0
@@ -116,19 +126,23 @@ if __name__ == '__main__':
 
         avg_score = scores / len(humans) if len(humans) > 0 else 0
         tqdm_keys.set_postfix(OrderedDict({'inference time': elapsed, 'score': avg_score}))
-        if args.data_idx >= 0:
+        if True:
             logger.info('score:', k, len(humans), len(anns), avg_score)
 
             import matplotlib.pyplot as plt
             fig = plt.figure()
             a = fig.add_subplot(2, 3, 1)
             plt.imshow(e.draw_humans(image, humans, True))
+            a.set_xticks([])
+            a.set_yticks([])
 
             a = fig.add_subplot(2, 3, 2)
             # plt.imshow(cv2.resize(image, (e.heatMat.shape[1], e.heatMat.shape[0])), alpha=0.5)
             tmp = np.amax(e.heatMat[:, :, :-1], axis=2)
             plt.imshow(tmp, cmap=plt.cm.gray, alpha=0.5)
             plt.colorbar()
+            a.set_xticks([])
+            a.set_yticks([])
 
             tmp2 = e.pafMat.transpose((2, 0, 1))
             tmp2_odd = np.amax(np.absolute(tmp2[::2, :, :]), axis=0)
@@ -139,16 +153,20 @@ if __name__ == '__main__':
             # plt.imshow(CocoPose.get_bgimg(inp, target_size=(vectmap.shape[1], vectmap.shape[0])), alpha=0.5)
             plt.imshow(tmp2_odd, cmap=plt.cm.gray, alpha=0.5)
             plt.colorbar()
+            a.set_xticks([])
+            a.set_yticks([])
 
             a = fig.add_subplot(2, 3, 5)
             a.set_title('Vectormap-y')
             # plt.imshow(CocoPose.get_bgimg(inp, target_size=(vectmap.shape[1], vectmap.shape[0])), alpha=0.5)
             plt.imshow(tmp2_even, cmap=plt.cm.gray, alpha=0.5)
             plt.colorbar()
+            a.set_xticks([])
+            a.set_yticks([])
 
             plt.show()
-    
-        e.get_feature(img_name)
+        # else:
+        #     e.get_feature(img_name)
 
     fp = open(write_json, 'w')
     json.dump(result, fp)

@@ -306,6 +306,10 @@ class BaseNetwork(object):
     @layer
     def concat(self, inputs, axis, name):
         return tf.concat(axis=axis, values=inputs, name=name)
+    
+    @layer
+    def identity(self, input, name):
+        return tf.identity(input, name=name)
 
     @layer
     def add(self, inputs, name):

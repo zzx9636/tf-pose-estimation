@@ -258,11 +258,12 @@ def _rotate_coord(shape, newxy, point, angle):
 
 def pose_to_img(meta_l):
     global _network_w, _network_h, _scale
-    # print("In pose_to_img")
-    # print(meta_l[0].img.shape)
-    #print((_network_w // _scale, _network_h // _scale))
+    rnn = meta_l[0].img[:,:,:-57]
+    pose = meta_l[0].img[:,:,-57:]
     return [
-        meta_l[0].img.astype(np.float16),
+        #meta_l[0].img.astype(np.float16),
+        rnn.astype(np.float16),
+        pose.astype(np.float16),
         meta_l[0].get_heatmap(target_size=(_network_w // _scale, _network_h // _scale)),
         meta_l[0].get_vectormap(target_size=(_network_w // _scale, _network_h // _scale))
     ]

@@ -48,9 +48,9 @@ def write_coco_json(human, image_w, image_h):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Tensorflow Openpose Inference')
-    parser.add_argument('--resize', type=str, default='0x0', help='if provided, resize images before they are processed. default=0x0, Recommends : 432x368 or 656x368 or 1312x736 ')
+    parser.add_argument('--resize', type=str, default='432x368', help='if provided, resize images before they are processed. default=0x0, Recommends : 432x368 or 656x368 or 1312x736 ')
     parser.add_argument('--resize-out-ratio', type=float, default=8.0, help='if provided, resize heatmaps before they are post-processed. default=8.0')
-    parser.add_argument('--model', type=str, default='mobilenet_v2_large', help='cmu / mobilenet_thin / mobilenet_v2_large')
+    parser.add_argument('--model', type=str, default='mobilenet_thin', help='cmu / mobilenet_thin / mobilenet_v2_large')
     parser.add_argument('--cocoyear', type=str, default='2018')
     parser.add_argument('--coco-dir', type=str, default='/home/zixu/Extra_Disk/Dataset/PoseTrack/')
     parser.add_argument('--data-idx', type=int, default=-1)
@@ -59,10 +59,10 @@ if __name__ == '__main__':
 
 
     image_dir = args.coco_dir 
-    coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/trainpart%s.json' % args.cocoyear
+    coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/valpart%s.json' % args.cocoyear
     cocoGt = COCO(coco_json_file)
     catIds = cocoGt.getCatIds()#catNms=['person'])
-    keys = cocoGt.getImgIds(catIds=catIds)
+    keys = cocoGt.getImgIds()#(catIds=catIds)
     if args.data_idx < 0:
         if eval_size > 0:
             keys = keys[:eval_size]  # only use the first #eval_size elements.
@@ -72,17 +72,19 @@ if __name__ == '__main__':
     logger.info('validation %s set size=%d' % (coco_json_file, len(keys)))
     write_json = '%s_%s_%0.1f.json' % (args.model, args.resize, args.resize_out_ratio)
     base_data_dir='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/mobilenet_v2_large/graph_opt.pb'
+    #base_data_dir = '/home/extra_disk/Git_Repo/tf-pose-estimation/models/graph/mobilenet_thin/graph_opt.pb'
     #base_data_dir='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/cmu/graph_opt.pb'
     logger.debug('initialization %s : %s' % (args.model, base_data_dir))
     w, h = model_wh(args.resize)
     if w == 0 or h == 0:
-        e = TfPoseEstimator(get_graph_path(args.model), target_size=(432, 368))
+        e = TfPoseEstimator(base_data_dir, target_size=(432, 368))
     else:
-        e = TfPoseEstimator(get_graph_path(args.model), target_size=(w, h))
+        e = TfPoseEstimator(base_data_dir, target_size=(w, h))
 
     print('FLOPs: ', e.get_flops())
 
     result = []
+    keys = [10174370017, 10174370018]
     tqdm_keys = tqdm(keys)
     for i, k in enumerate(tqdm_keys):
         img_meta = cocoGt.loadImgs(k)[0]
@@ -114,7 +116,7 @@ if __name__ == '__main__':
 
         avg_score = scores / len(humans) if len(humans) > 0 else 0
         tqdm_keys.set_postfix(OrderedDict({'inference time': elapsed, 'score': avg_score}))
-        if args.data_idx >= 0:
+        if True:# args.data_idx >= 0:
             logger.info('score:', k, len(humans), len(anns), avg_score)
 
             import matplotlib.pyplot as plt
@@ -146,7 +148,7 @@ if __name__ == '__main__':
 
             plt.show()
     
-        e.get_feature(img_name)
+        #e.get_feature(img_name)
 
     fp = open(write_json, 'w')
     json.dump(result, fp)
