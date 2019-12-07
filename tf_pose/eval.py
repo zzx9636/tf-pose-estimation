@@ -84,7 +84,7 @@ if __name__ == '__main__':
     print('FLOPs: ', e.get_flops())
 
     result = []
-    keys = [10174370017, 10174370018]
+    #keys = [10174370017, 10174370018]
     tqdm_keys = tqdm(keys)
     for i, k in enumerate(tqdm_keys):
         img_meta = cocoGt.loadImgs(k)[0]
@@ -116,7 +116,7 @@ if __name__ == '__main__':
 
         avg_score = scores / len(humans) if len(humans) > 0 else 0
         tqdm_keys.set_postfix(OrderedDict({'inference time': elapsed, 'score': avg_score}))
-        if True:# args.data_idx >= 0:
+        if args.data_idx >= 0:
             logger.info('score:', k, len(humans), len(anns), avg_score)
 
             import matplotlib.pyplot as plt
@@ -148,7 +148,7 @@ if __name__ == '__main__':
 
             plt.show()
     
-        #e.get_feature(img_name)
+        e.get_feature(img_name)
 
     fp = open(write_json, 'w')
     json.dump(result, fp)

@@ -10,7 +10,7 @@ import json, re
 from tqdm import tqdm
 #sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 
-from tf_pose.estimator import TfPoseEstimator_RNN as TfPoseEstimator
+from tf_pose.estimator import TfPoseEstimator_RNN3 as TfPoseEstimator
 from tf_pose.networks import model_wh, get_graph_path
 from tf_pose.common import read_imgfile
 
@@ -59,7 +59,7 @@ if __name__ == '__main__':
 
 
     image_dir = args.coco_dir 
-    coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/valpart%s.json' % args.cocoyear
+    coco_json_file = args.coco_dir + 'posetrack_data/combined_annotations/trainpart%s.json' % args.cocoyear
     cocoGt = COCO(coco_json_file)
     keys = cocoGt.getImgIds()
 
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     write_json = '%s_%s_%0.1f.json' % (args.model, args.resize, args.resize_out_ratio)
     base_path='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/mobilenet_v2_large/graph_opt.pb'
     #rnn_path = '/home/extra_disk/Git_Repo/tf-pose-estimation/models/train/test/model_latest-246000.meta' 
-    rnn_path = '/home/extra_disk/Git_Repo/tf-pose-estimation/models/graph/rnn/graph_opt.pb'
+    rnn_path = '/home/extra_disk/Git_Repo/tf-pose-estimation/models/graph/rnn/graph_opt4.pb'
     #base_path='/home/zixu/Extra_Disk/Git_Repo/tf-pose-estimation/models/graph/cmu/graph_opt.pb'
     logger.debug('initialization')
     w, h = model_wh(args.resize)
@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
 
     result = []
-    keys = [10174370017, 10174370018]
+    keys = range(10241800000,10241800050)
     tqdm_keys = tqdm(keys)
     for i, k in enumerate(tqdm_keys):
         img_meta = cocoGt.loadImgs(k)[0]

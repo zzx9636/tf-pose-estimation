@@ -27,16 +27,16 @@ class RnnUnit(network_base.BaseNetwork):
             prefix = 'MConv_Stage1'
             (self.feed('concat_init')
              # .se_block(name=prefix + '_L1_se', ratio=8)
-             .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L1_1')
-             .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L1_2')
+             .separable_conv(3, 3, depth2(256), 1, name=prefix + '_L1_1')
+             .separable_conv(3, 3, depth2(256), 1, name=prefix + '_L1_2')
              .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L1_3')
              .separable_conv(3, 3, depth2(512), 1, name=prefix + '_L1_4')
              .separable_conv(1, 1, 38, 1, relu=False, name=prefix + '_L1_5'))
 
             (self.feed('concat_init')
              # .se_block(name=prefix + '_L2_se', ratio=8)
-             .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L2_1')
-             .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L2_2')
+             .separable_conv(3, 3, depth2(256), 1, name=prefix + '_L2_1')
+             .separable_conv(3, 3, depth2(256), 1, name=prefix + '_L2_2')
              .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L2_3')
              .separable_conv(3, 3, depth2(512), 1, name=prefix + '_L2_4')
              .separable_conv(1, 1, 19, 1, relu=False, name=prefix + '_L2_5'))
@@ -44,14 +44,14 @@ class RnnUnit(network_base.BaseNetwork):
             for stage_id in range(2):
                 prefix_prev = 'MConv_Stage%d' % (stage_id + 1)
                 prefix = 'MConv_Stage%d' % (stage_id + 2)
-                (self.feed('rnnInput_copy', prefix_prev + '_L1_5',
+                (self.feed(prefix_prev + '_L1_5',
                            prefix_prev + '_L2_5')
                  .concat(3, name=prefix + '_concat')
                  # .se_block(name=prefix + '_L1_se', ratio=8)
-                 .separable_conv(3, 3, depth2(512), 1, name=prefix + '_L1_1')
-                 .separable_conv(3, 3, depth2(256), 1, name=prefix + '_L1_2')
+                 .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L1_1')
+                 .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L1_2')
                  .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L1_3')
-                 .separable_conv(1, 1, depth2(64), 1, name=prefix + '_L1_4')
+                 .separable_conv(1, 1, depth2(512), 1, name=prefix + '_L1_4')
                  .separable_conv(1, 1, 38, 1, relu=False, name=prefix + '_L1_5'))
 
                 (self.feed(prefix + '_concat')
@@ -59,7 +59,7 @@ class RnnUnit(network_base.BaseNetwork):
                  .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L2_1')
                  .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L2_2')
                  .separable_conv(3, 3, depth2(128), 1, name=prefix + '_L2_3')
-                 .separable_conv(1, 1, depth2(128), 1, name=prefix + '_L2_4')
+                 .separable_conv(1, 1, depth2(512), 1, name=prefix + '_L2_4')
                  .separable_conv(1, 1, 19, 1, relu=False, name=prefix + '_L2_5'))
 
             (self.feed('MConv_Stage3_L2_5',

@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-meta_path = 'models/train3/test/model_latest-4000.meta' # Your .meta file
+meta_path = 'models/train4/test/model_latest-11000.meta' # Your .meta file
 output_node_names = ['RNN/concat_rnn']    # Output nodes
 
 with tf.Session() as sess:
@@ -8,7 +8,7 @@ with tf.Session() as sess:
     saver = tf.train.import_meta_graph(meta_path, clear_devices=True)
 
     # Load weights
-    saver.restore(sess,'models/train3/test/model_latest-4000')
+    saver.restore(sess,'models/train4/test/model_latest-11000')
     g = tf.get_default_graph()
     # for ts in [n.name for n in tf.get_default_graph().as_graph_def().node]:
     #     print(ts)
@@ -19,5 +19,5 @@ with tf.Session() as sess:
         output_node_names)
 
     # # # Save the frozen graph
-    with open('/home/extra_disk/Git_Repo/tf-pose-estimation/models/graph/rnn/graph_opt3.pb', 'wb') as f:
+    with open('/home/extra_disk/Git_Repo/tf-pose-estimation/models/graph/rnn/graph_opt4.pb', 'wb') as f:
         f.write(frozen_graph_def.SerializeToString())

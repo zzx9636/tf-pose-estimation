@@ -406,8 +406,9 @@ class CocoPose_RNN(RNGDataFlow):
             # if prev img exist
             file_path = img_url[:-4]
             img_idx = int(file_path[-6:])+1000000
-            data_prev_path = file_path[:-6]+str(img_idx-1)[1:]+'.npy'
-            if not os.path.exists(data_prev_path):
+            data_cur_path = file_path+'_2.npy'
+            data_prev_path = file_path[:-6]+str(img_idx-1)[1:]+'_2.npy'
+            if not os.path.exists(data_prev_path) or not os.path.exists(data_cur_path):
                 continue
             anns = self.coco.loadAnns(ann_idx)
             meta = CocoMetadata(idx, img_url, img_meta, anns, sigma=8.0)
@@ -460,9 +461,10 @@ def read_image_url(metas):
 def read_npy(metas):
     for meta in metas:
         file_path = meta.img_url[:-4]
+        #print(file_path)
         img_idx = int(file_path[-6:])+1000000
-        data_prev_path = file_path[:-6]+str(img_idx-1)[1:]+'.npy'
-        data_cur_path = file_path+'.npy'
+        data_prev_path = file_path[:-6]+str(img_idx-1)[1:]+'_2.npy'
+        data_cur_path = file_path+'_2.npy'
         # print('read '+data_cur_path)
 
         data_prev = np.load(data_prev_path)
